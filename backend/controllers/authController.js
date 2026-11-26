@@ -3,16 +3,25 @@ const User = require("../models/User");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
+// ==============================
 // Register User
+// ==============================
 const registerUser = async (req, res) => {
     try {
         const { name, email, password } = req.body;
 
-        // 1. Validate required fields
-        if (!name || !email || !password) {
+        // 1. Validate input types and required fields
+        if (
+            typeof name !== "string" ||
+            typeof email !== "string" ||
+            typeof password !== "string" ||
+            !name.trim() ||
+            !email.trim() ||
+            !password
+        ) {
             return res.status(400).json({
                 success: false,
-                message: "All fields are required"
+                message: "All fields are required and must be valid strings"
             });
         }
 
@@ -20,21 +29,26 @@ const registerUser = async (req, res) => {
         const cleanName = name.trim();
         const cleanEmail = email.trim().toLowerCase();
 
-        if (!cleanName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        // 3. Validate name and email
+        if (
+            cleanName.length > 100 ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)
+        ) {
             return res.status(400).json({
                 success: false,
-                message: "Please enter valid name and email"
+                message: "Please enter a valid name and email"
             });
         }
 
-        if (typeof password !== "string" || password.length < 8 || password.length > 72) {
+        // 4. Validate password
+        if (password.length < 8 || password.length > 72) {
             return res.status(400).json({
                 success: false,
                 message: "Password must be between 8 and 72 characters"
             });
         }
 
-        // 3. Check existing user
+        // 5. Check existing user
         const existingUser = await User.findOne({
             email: cleanEmail
         });
@@ -46,17 +60,17 @@ const registerUser = async (req, res) => {
             });
         }
 
-        // 4. Hash password
+        // 6. Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // 5. Create user
+        // 7. Create user
         const user = await User.create({
             name: cleanName,
             email: cleanEmail,
             password: hashedPassword
         });
 
-        // 6. Send response
+        // 8. Return success response
         return res.status(201).json({
             success: true,
             message: "User registered successfully",
@@ -69,6 +83,8 @@ const registerUser = async (req, res) => {
         });
 
     } catch (error) {
+
+        // Handle duplicate email error
         if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
@@ -86,8 +102,9 @@ const registerUser = async (req, res) => {
 };
 
 
-
+// ==============================
 // Login User
+// ==============================
 const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -106,7 +123,7 @@ const loginUser = async (req, res) => {
         }
 
         // 2. Find user by email
-        // Explicitly include password because schema has select: false
+        // Include password because schema uses select: false
         const user = await User.findOne({
             email: email.trim().toLowerCase()
         }).select("+password");
@@ -118,7 +135,7 @@ const loginUser = async (req, res) => {
             });
         }
 
-        // 3. Compare entered password with stored hash
+        // 3. Check password using bcrypt
         const isPasswordMatch = await bcrypt.compare(
             password,
             user.password
@@ -131,7 +148,17 @@ const loginUser = async (req, res) => {
             });
         }
 
-        // 4. Generate JWT token
+        // 4. Verify JWT secret configuration
+        if (!process.env.JWT_SECRET) {
+            console.error("JWT_SECRET is not configured");
+
+            return res.status(500).json({
+                success: false,
+                message: "Server configuration error"
+            });
+        }
+
+        // 5. Generate JWT token
         const token = jwt.sign(
             {
                 id: user._id,
@@ -143,7 +170,7 @@ const loginUser = async (req, res) => {
             }
         );
 
-        // 5. Return response
+        // 6. Return login response
         return res.status(200).json({
             success: true,
             message: "Login successful",
@@ -157,6 +184,7 @@ const loginUser = async (req, res) => {
         });
 
     } catch (error) {
+
         console.error("Login error:", error.message);
 
         return res.status(500).json({
@@ -166,4 +194,11 @@ const loginUser = async (req, res) => {
     }
 };
 
-module.exports = { registerUser, loginUser };
+
+// ==============================
+// Export Controllers
+// ==============================
+module.exports = {
+    registerUser,
+    loginUser
+};
